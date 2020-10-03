@@ -1,5 +1,6 @@
 import data.fintype.basic
 import data.set.lattice
+import DFA
 
 structure NFA := 
 (alphabet : Type) 
@@ -66,5 +67,17 @@ instance eval_dec (M : NFA) (s : list M.alphabet) : decidable_pred (M.eval s) :=
 
 def accepts (M : NFA) (s : list M.alphabet) : bool :=
 ∃ S ∈ M.accept_states, S ∈ M.eval s
+
+def DFA_to_NFA (M : DFA) [decidable_eq M.state] : NFA :=
+{ alphabet := M.alphabet,
+  alphabet_fintype := M.alphabet_fintype,
+  state := M.state,
+  state_fintype := M.state_fintype,
+  step := λ S a, {M.step S a},
+  step_dec := by tauto,
+  start := {M.start},
+  start_dec := by tauto,
+  accept_states := M.accept_states,
+  accept_states_dec := M.accept_states_dec }
 
 end NFA

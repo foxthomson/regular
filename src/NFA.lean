@@ -41,34 +41,30 @@ begin
   apply and.decidable
 end
 
-def eval' (M : NFA) (start' : set M.state) : list M.alphabet → set M.state :=
-list.foldl M.step_set start'
-
-instance eval'_dec (M : NFA) (start' : set M.state) [decidable_pred start'] (s : list M.alphabet) : 
-  decidable_pred (M.eval' start' s) :=
-begin
-  rw eval',
-  tactic.unfreeze_local_instances,
-  revert start',
-  induction s with a s ih,
-  { intros _ h,
-    rw list.foldl,
-    assumption },
-  { intros start' hdec,
-    rw list.foldl,
-    specialize ih (M.step_set start' a),
-    assumption }
-end
-
-def eval (M : NFA) : list M.alphabet → set M.state := M.eval' M.start
+def eval (M : NFA) : list M.alphabet → set M.state := list.foldl M.step_set M.start
 
 instance eval_dec (M : NFA) (s : list M.alphabet) : decidable_pred (M.eval s) :=
-  M.eval'_dec M.start s
+begin
+  rw eval,
+  have hdec := M.start_dec,
+  revert hdec,
+  generalize : M.start = start,
+  revert start,
+  induction s with a s ih,
+  { intros _ _, 
+    rw list.foldl,
+    assumption },
+  { intro start, 
+    introI hdec,
+    rw list.foldl,
+    specialize ih (M.step_set start a),
+    exact ih (M.step_set_dec a start) }
+end
 
-def accepts (M : NFA) (s : list M.alphabet) : bool :=
+def accepts (M : NFA) (s : list M.alphabet) : Prop :=
 ∃ S ∈ M.accept_states, S ∈ M.eval s
 
-def DFA_to_NFA (M : DFA) [decidable_eq M.state] : NFA :=
+def NFA_of_DFA (M : DFA) [decidable_eq M.state] : NFA :=
 { alphabet := M.alphabet,
   alphabet_fintype := M.alphabet_fintype,
   state := M.state,
@@ -79,5 +75,37 @@ def DFA_to_NFA (M : DFA) [decidable_eq M.state] : NFA :=
   start_dec := by tauto,
   accept_states := M.accept_states,
   accept_states_dec := M.accept_states_dec }
+
+lemma NFA_of_DFA_eval_match (M : DFA) [decidable_eq M.state] (s : list M.alphabet) :
+  {M.eval s} = (NFA_of_DFA M).eval s :=
+begin
+  change {list.foldl M.step M.start s} = list.foldl (NFA_of_DFA M).step_set {M.start} s,
+  generalize : M.start = start,
+  revert start,
+  induction s with a s ih,
+  { tauto },
+  { intro start,
+    rw [list.foldl, list.foldl],
+    have : (NFA_of_DFA M).step_set {start} a = {M.step start a},
+    { rw step_set,
+      simp only [set.bUnion_singleton, set.bind_def],
+      tauto },
+    rw this,
+    tauto }
+end
+
+lemma NFA_of_DFA_correct (M : DFA) [decidable_eq M.state] (s : list M.alphabet) :
+  M.accepts s ↔ (NFA_of_DFA M).accepts s :=
+begin
+  rw [accepts, DFA.accepts, ←NFA_of_DFA_eval_match],
+  split,
+  { intro h,
+    use M.eval s,
+    tauto },
+  { rintro ⟨ S, hS₁, hS₂ ⟩,
+    rw set.mem_singleton_iff at hS₂,
+    rw hS₂ at hS₁,
+    assumption }
+end
 
 end NFA

@@ -17,7 +17,7 @@ instance (M : DFA) : decidable_pred M.accept_states := M.accept_states_dec
 def eval (M : DFA) : list M.alphabet → M.state :=
 list.foldl M.step M.start
 
-def accept (M : DFA) (s : list M.alphabet) : bool :=
+def accepts (M : DFA) (s : list M.alphabet) : Prop :=
 M.eval s ∈ M.accept_states
 
 end DFA

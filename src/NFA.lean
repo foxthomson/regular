@@ -12,13 +12,11 @@ structure NFA :=
 (start : set state)
 [start_dec : decidable_pred start]
 (accept_states : set state)
--- [accept_states_dec : decidable_pred accept_states]
 
 namespace NFA
 
--- instance dec₁ (M : NFA) : decidable_pred M.accept_states := M.accept_states_dec
-instance dec₂ (M : NFA) : decidable_pred M.start := M.start_dec
-instance dec₃ (M : NFA) : Π (S : M.state) (a : M.alphabet), decidable_pred (M.step S a) := M.step_dec
+instance dec₁ (M : NFA) : decidable_pred M.start := M.start_dec
+instance dec₂ (M : NFA) : Π (S : M.state) (a : M.alphabet), decidable_pred (M.step S a) := M.step_dec
 
 instance fin₁ (M : NFA) : fintype M.alphabet := M.alphabet_fintype
 instance fin₂ (M : NFA) : fintype M.state := M.state_fintype
@@ -73,9 +71,7 @@ def NFA_of_DFA (M : DFA) [decidable_eq M.state] : NFA :=
   step_dec := by tauto,
   start := {M.start},
   start_dec := by tauto,
-  accept_states := M.accept_states,
-  -- accept_states_dec := M.accept_states_dec 
-  }
+  accept_states := M.accept_states }
 
 lemma NFA_of_DFA_eval_match (M : DFA) [decidable_eq M.state] (s : list M.alphabet) :
   {M.eval s} = (NFA_of_DFA M).eval s :=

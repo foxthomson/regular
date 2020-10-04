@@ -1,4 +1,4 @@
-# `regular` - Definitions and Theorems about Regular Languages in Lean
+# `regular` - Definitions and Theorems about Regular Epressions, Automata and Sets in Lean
 The repository will aim to 
 - [x] define Deterministic Finite Automata (DFA)
 - [x] define Nondeterministic Finite Automata (NFA)

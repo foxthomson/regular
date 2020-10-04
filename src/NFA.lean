@@ -118,4 +118,7 @@ def DFA_of_NFA (M : NFA) : DFA :=
   start := M.start,
   accept_states := {Ss : set M.state | ∃ (S ∈ M.accept_states), S ∈ Ss} }
 
+lemma DFA_of_NFA_correct (M : NFA) (s : list M.alphabet) :
+  M.accepts s ↔ M.DFA_of_NFA.accepts s := by refl
+
 end NFA

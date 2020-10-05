@@ -1,9 +1,11 @@
 import data.fintype.basic
 
+universes u v
+
 structure DFA := 
-(alphabet : Type) 
+(alphabet : Type u) 
 [alphabet_fintype : fintype alphabet]
-(state : Type)
+(state : Type v)
 [state_fintype : fintype state]
 (step : state → alphabet → state)
 (start : state)

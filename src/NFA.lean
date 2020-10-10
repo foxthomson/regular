@@ -1,12 +1,12 @@
 import data.fintype.basic
 import data.set.lattice
 import DFA
-import fixpoint
 
 universes u v
 
-structure NFA := 
-(alphabet : Type u) 
+variable {α : Type}
+
+structure NFA (alphabet : Type u) := 
 [alphabet_fintype : fintype alphabet]
 (state : Type v)
 [state_fintype : fintype state]
@@ -16,16 +16,16 @@ structure NFA :=
 
 namespace NFA
 
-@[reducible] def start_dec (M : NFA) := decidable_pred M.start
-@[reducible] def step_dec (M : NFA) := Π (S : M.state) (a : M.alphabet), decidable_pred (M.step S a)
+@[reducible] def start_dec (M : NFA α) := decidable_pred M.start
+@[reducible] def step_dec (M : NFA α) := Π (S : M.state) (a : α), decidable_pred (M.step S a)
 
-instance fin₁ (M : NFA) : fintype M.alphabet := M.alphabet_fintype
-instance fin₂ (M : NFA) : fintype M.state := M.state_fintype
+instance fin₁ (M : NFA α) : fintype α := M.alphabet_fintype
+instance fin₂ (M : NFA α) : fintype M.state := M.state_fintype
 
-def step_set (M : NFA) : set M.state → M.alphabet → set M.state :=
+def step_set (M : NFA α) : set M.state → α → set M.state :=
 λ Ss a, Ss >>= λ S, M.step S a
 
-instance step_set_dec (M : NFA) (a : M.alphabet) [M.step_dec] :
+instance step_set_dec (M : NFA α) (a : α) [M.step_dec] :
 Π (Ss : set M.state) [decidable_pred Ss], decidable_pred (M.step_set Ss a) :=
 begin
   intro Ss,
@@ -40,9 +40,9 @@ begin
   apply and.decidable
 end
 
-def eval (M : NFA) : list M.alphabet → set M.state := list.foldl M.step_set M.start
+def eval (M : NFA α) : list α → set M.state := list.foldl M.step_set M.start
 
-instance eval_dec (M : NFA) (s : list M.alphabet) [hdec : M.start_dec] [M.step_dec] : 
+instance eval_dec (M : NFA α) (s : list α) [hdec : M.start_dec] [M.step_dec] : 
 decidable_pred (M.eval s) :=
 begin
   rw eval,
@@ -55,19 +55,18 @@ begin
   tauto
 end
 
-def accepts (M : NFA) (s : list M.alphabet) : Prop :=
+def accepts (M : NFA α) (s : list α) : Prop :=
 ∃ S ∈ M.accept_states, S ∈ M.eval s
 
-def NFA_of_DFA (M : DFA) : NFA :=
-{ alphabet := M.alphabet,
-  alphabet_fintype := M.alphabet_fintype,
+def NFA_of_DFA (M : DFA α) : NFA α :=
+{ alphabet_fintype := M.alphabet_fintype,
   state := M.state,
   state_fintype := M.state_fintype,
   step := λ S a, {M.step S a},
   start := {M.start},
   accept_states := M.accept_states }
 
-lemma NFA_of_DFA_eval_match (M : DFA) (s : list M.alphabet) :
+lemma NFA_of_DFA_eval_match (M : DFA α) (s : list α) :
   {M.eval s} = (NFA_of_DFA M).eval s :=
 begin
   change {list.foldl M.step M.start s} = list.foldl (NFA_of_DFA M).step_set {M.start} s,
@@ -84,7 +83,7 @@ begin
     tauto }
 end
 
-lemma NFA_of_DFA_correct (M : DFA) (s : list M.alphabet) :
+lemma NFA_of_DFA_correct (M : DFA α) (s : list α) :
   M.accepts s ↔ (NFA_of_DFA M).accepts s :=
 begin
   rw [accepts, DFA.accepts, ←NFA_of_DFA_eval_match],
@@ -98,22 +97,20 @@ begin
     assumption }
 end
 
-def DFA_of_NFA (M : NFA) : DFA :=
-{ alphabet := M.alphabet,
-  alphabet_fintype := M.alphabet_fintype,
+def DFA_of_NFA (M : NFA α) : DFA α :=
+{ alphabet_fintype := M.alphabet_fintype,
   state := set M.state,
   state_fintype := set.fintype,
   step := M.step_set,
   start := M.start,
   accept_states := {Ss : set M.state | ∃ (S ∈ M.accept_states), S ∈ Ss} }
 
-lemma DFA_of_NFA_correct (M : NFA) (s : list M.alphabet) :
+lemma DFA_of_NFA_correct (M : NFA α) (s : list α) :
   M.accepts s ↔ M.DFA_of_NFA.accepts s := by refl
 
 end NFA
 
-structure ε_NFA := 
-(alphabet : Type u) 
+structure ε_NFA (alphabet : Type u) :=
 [alphabet_fintype : fintype alphabet]
 (state : Type v)
 [state_fintype : fintype state]
@@ -123,57 +120,29 @@ structure ε_NFA :=
 
 namespace ε_NFA
 
-instance fin₁ (M : ε_NFA) : fintype M.alphabet := M.alphabet_fintype
-instance fin₂ (M : ε_NFA) : fintype M.state := M.state_fintype
+instance fin₁ (M : ε_NFA α) : fintype α := M.alphabet_fintype
+instance fin₂ (M : ε_NFA α) : fintype M.state := M.state_fintype
 
-open least_fixpoint
-
-inductive in_ε_closure (M : ε_NFA) : set M.state → M.state → Prop
-| base : ∀ Ss (S ∈ Ss), in_ε_closure Ss S
-| step : ∀ Ss S (h : in_ε_closure Ss S), in_ε_closure (Ss >>= (λ (T : M.state), M.step T option.none)) S
-
-inductive ε_closure (M : ε_NFA) : set M.state → M.state → Prop
+inductive ε_closure (M : ε_NFA α) : set M.state → M.state → Prop
 | base : ∀ Ss (S ∈ Ss), ε_closure Ss S
 | step : ∀ Ss S T, ε_closure Ss S → T ∈ M.step S option.none → ε_closure Ss T
 
--- def ε_closure (M : ε_NFA) (Ss : set M.state) : set M.state :=
--- set_of (least_fixpoint (λ Ts, Ts ∪ (Ts >>= (λ (T : M.state), M.step T option.none))) Ss)
-
--- @[simp] lemma ε_closure_of_ε_closure (M : ε_NFA) :
---   ∀ (Ss : set M.state), M.ε_closure (M.ε_closure Ss) = M.ε_closure Ss := 
--- -- fixpoint_of_fixpoint _ begin simp end
--- begin
---   intro Ss,
---   ext S,
---   split,
---   { intro h,
---     type_check ε_closure.rec_on h,
---     -- generalize_hyp ha : M.ε_closure Ss = a at h,
---     -- apply ε_closure.base,
---     induction h with _ _ _ Ss S' T hT h ih,
---     { finish },
---     {  } },
---   { intro h,
---     apply ε_closure.base,
---     assumption }
--- end
-
-def step_set (M : ε_NFA) : set M.state → M.alphabet → set M.state :=
+def step_set (M : ε_NFA α) : set M.state → α → set M.state :=
 λ Ss a, M.ε_closure $ Ss >>= λ S, M.step S (option.some a)
 
-def eval (M : ε_NFA) : list M.alphabet → set M.state := list.foldl M.step_set (M.ε_closure M.start)
+def eval (M : ε_NFA α) : list α → set M.state := list.foldl M.step_set (M.ε_closure M.start)
 
-def accepts (M : ε_NFA) (s : list M.alphabet) : Prop :=
+def accepts (M : ε_NFA α) (s : list α) : Prop :=
 ∃ S ∈ M.accept_states, S ∈ M.eval s
 
-def NFA_of_ε_NFA (M : ε_NFA) : NFA :=
-{ alphabet := M.alphabet,
+def NFA_of_ε_NFA (M : ε_NFA α) : NFA α :=
+{ alphabet_fintype := M.alphabet_fintype,
   state := M.state,
   step := λ S a, M.ε_closure (M.step S (some a)),
   start := M.ε_closure M.start,
   accept_states := M.accept_states }
 
-lemma NFA_of_ε_NFA_step_set_match (M : ε_NFA) (Ss : set M.state) (a : M.alphabet) :
+lemma NFA_of_ε_NFA_step_set_match (M : ε_NFA α) (Ss : set M.state) (a : α) :
   M.step_set Ss a = M.NFA_of_ε_NFA.step_set Ss a :=
 begin
   rw [step_set, NFA.step_set],
@@ -211,7 +180,7 @@ begin
       assumption' } }
 end
 
-lemma NFA_of_ε_NFA_eval_match (M : ε_NFA) (s : list M.alphabet) :
+lemma NFA_of_ε_NFA_eval_match (M : ε_NFA α) (s : list α) :
   M.eval s = (NFA_of_ε_NFA M).eval s :=
 begin
   change list.foldl M.step_set (M.ε_closure M.start) s = list.foldl M.NFA_of_ε_NFA.step_set (M.ε_closure M.start) s,
@@ -221,7 +190,7 @@ begin
   rw NFA_of_ε_NFA_step_set_match
 end
 
-lemma NFA_of_ε_NFA_correct (M : ε_NFA) (s : list M.alphabet) :
+lemma NFA_of_ε_NFA_correct (M : ε_NFA α) (s : list α) :
   M.accepts s ↔ M.NFA_of_ε_NFA.accepts s :=
 begin
   rw [accepts, NFA.accepts, NFA_of_ε_NFA_eval_match],

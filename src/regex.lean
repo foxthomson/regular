@@ -1,4 +1,5 @@
 import data.fintype.basic
+import data.finset.basic
 import NFA
 
 universe u
@@ -34,7 +35,7 @@ def bmatch {α : Type u} [decidable_eq α] : regex α → list α → bool
 | M [] := match_null M
 | M (a::as) := bmatch (M.feed a) as
 
-def ε_NFA_of_regex {α : Type u} [fintype α] [decidable_eq α] : regex α → ε_NFA α
+def ε_NFA_of_regex {α : Type u} [fintype α] [h : decidable_eq α] : regex α → ε_NFA α
 | RZero := 
   { state := pempty,
     step := λ _ _, ∅,
@@ -51,25 +52,43 @@ def ε_NFA_of_regex {α : Type u} [fintype α] [decidable_eq α] : regex α → 
     start := {tt},
     accept_states := {ff} }
 | (RStar P) := 
-  let P := P.ε_NFA_of_regex in
-  { state := P.state,
-    state_fintype := P.state_fintype,
-    step := λ S b, b.cases_on' (ite (S ∈ P.accept_states) (P.start ∪ P.step S b) (P.step S none)) (λ b, P.step S b),
-    start := P.start,
-    accept_states := P.accept_states }
+  begin
+    let P := P.ε_NFA_of_regex,
+    haveI := P.state_dec,
+    exact
+    { state := P.state,
+      state_fintype := P.state_fintype,
+      step := λ S b, b.cases_on' (ite (S ∈ P.accept_states) (P.start ∪ (P.step S b)) (P.step S none)) (λ b, P.step S b),
+      start := P.start,
+      accept_states := P.accept_states }
+  end
 | (RPlus P Q) := 
-  let P := P.ε_NFA_of_regex, Q := Q.ε_NFA_of_regex in
-  { state := P.state × Q.state,
-    state_fintype := @prod.fintype _ _ P.state_fintype Q.state_fintype,
-    step := λ S b, set.prod (P.step S.1 b) (Q.step S.2 b),
-    start := set.prod P.start Q.start,
-    accept_states := set.prod P.start set.univ ∪ set.prod set.univ Q.start }
+  begin
+    let P := P.ε_NFA_of_regex,
+    let Q := Q.ε_NFA_of_regex,
+    haveI := P.state_fintype,
+    haveI := Q.state_fintype,
+    haveI := P.state_dec,
+    haveI := Q.state_dec,
+    exact
+    { state := P.state × Q.state,
+      step := λ S b, finset.product (P.step S.1 b) (Q.step S.2 b),
+      start := finset.product P.start Q.start,
+      accept_states := finset.product P.start finset.univ ∪ finset.product finset.univ Q.start }
+  end
 | (RComp P Q) := 
-  let P := P.ε_NFA_of_regex, Q := Q.ε_NFA_of_regex in
-  { state := P.state ⊕ Q.state,
-    state_fintype := @sum.fintype _ _ P.state_fintype Q.state_fintype,
-    step := λ S b, sum.elim (λ S₁, ite (S₁ ∈ P.accept_states) ((sum.inr '' Q.start) ∪ (sum.inl '' P.step S₁ b)) (sum.inl '' (P.step S₁ b))) (λ S₂, sum.inr '' Q.step S₂ b) S,
-    start := sum.inl '' P.start,
-    accept_states := sum.inr '' Q.accept_states }
+  begin
+    let P := P.ε_NFA_of_regex,
+    let Q := Q.ε_NFA_of_regex,
+    haveI := P.state_fintype,
+    haveI := Q.state_fintype,
+    haveI := P.state_dec,
+    haveI := Q.state_dec,
+    exact
+    { state := P.state ⊕ Q.state,
+      step := λ S b, sum.elim (λ S₁, ite (S₁ ∈ P.accept_states) (finset.image sum.inr Q.start ∪ finset.image sum.inl (P.step S₁ b)) (finset.image sum.inl (P.step S₁ b))) (λ S₂, finset.image sum.inr (Q.step S₂ b)) S,
+      start := finset.image sum.inl P.start,
+      accept_states := finset.image sum.inr Q.accept_states }
+  end
 
 end regex

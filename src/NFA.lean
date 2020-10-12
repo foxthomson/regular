@@ -10,50 +10,26 @@ structure NFA (alphabet : Type u) :=
 [alphabet_fintype : fintype alphabet]
 (state : Type v)
 [state_fintype : fintype state]
-(step : state → alphabet → set state)
-(start : set state)
-(accept_states : set state)
-
+[state_dec : decidable_eq state]
+(step : state → alphabet → finset state)
+(start : finset state)
+(accept_states : finset state)
 namespace NFA
 
-@[reducible] def start_dec (M : NFA α) := decidable_pred M.start
-@[reducible] def step_dec (M : NFA α) := Π (S : M.state) (a : α), decidable_pred (M.step S a)
+-- @[reducible] def start_dec (M : NFA α) := decidable_pred M.start
+-- @[reducible] def step_dec (M : NFA α) := Π (S : M.state) (a : α), decidable_pred (M.step S a)
+-- instance dec₁ (M : NFA α) := M.start_dec
+-- instance dec₂ (M : NFA α) := M.step_dec
+-- instance dec₃ (M : NFA α) := M.accept_dec
+instance dec (M : NFA α) := M.state_dec
 
-instance fin₁ (M : NFA α) : fintype α := M.alphabet_fintype
-instance fin₂ (M : NFA α) : fintype M.state := M.state_fintype
+instance fin₁ (M : NFA α) := M.alphabet_fintype
+instance fin₂ (M : NFA α) := M.state_fintype
 
-def step_set (M : NFA α) : set M.state → α → set M.state :=
-λ Ss a, Ss >>= λ S, M.step S a
+def step_set (M : NFA α) : finset M.state → α → finset M.state :=
+λ Ss a, finset.bind Ss (λ S, (M.step S a))
 
-instance step_set_dec (M : NFA α) (a : α) [M.step_dec] :
-Π (Ss : set M.state) [decidable_pred Ss], decidable_pred (M.step_set Ss a) :=
-begin
-  intro Ss,
-  introI h,
-  intro S,
-  rw step_set,
-  change decidable (S ∈ (Ss >>= λ (S : M.state), M.step S a)),
-  rw [set.bind_def, set.mem_Union],
-  apply @fintype.decidable_exists_fintype _ _ _,
-  intro T,
-  rw [set.mem_Union, exists_prop],
-  apply and.decidable
-end
-
-def eval (M : NFA α) : list α → set M.state := list.foldl M.step_set M.start
-
-instance eval_dec (M : NFA α) (s : list α) [hdec : M.start_dec] [M.step_dec] : 
-decidable_pred (M.eval s) :=
-begin
-  rw eval,
-  tactic.unfreeze_local_instances,
-  revert hdec,
-  change Π [hdec : decidable_pred M.start], decidable_pred (list.foldl M.step_set M.start s),
-  generalize : M.start = start,
-  revert start,
-  induction s with a s ih;
-  tauto
-end
+def eval (M : NFA α) : list α → finset M.state := list.foldl M.step_set M.start
 
 def accepts (M : NFA α) (s : list α) : Prop :=
 ∃ S ∈ M.accept_states, S ∈ M.eval s
@@ -66,7 +42,7 @@ def NFA_of_DFA (M : DFA α) : NFA α :=
   start := {M.start},
   accept_states := M.accept_states }
 
-lemma NFA_of_DFA_eval_match (M : DFA α) (s : list α) :
+lemma NFA_of_DFA_eval_match (M : DFA α) [decidable_eq M.state] (s : list α) :
   {M.eval s} = (NFA_of_DFA M).eval s :=
 begin
   change {list.foldl M.step M.start s} = list.foldl (NFA_of_DFA M).step_set {M.start} s,
@@ -90,23 +66,28 @@ begin
   split,
   { intro h,
     use M.eval s,
-    tauto },
+    finish },
   { rintro ⟨ S, hS₁, hS₂ ⟩,
-    rw set.mem_singleton_iff at hS₂,
+    rw finset.mem_singleton at hS₂,
     rw hS₂ at hS₁,
     assumption }
 end
 
 def DFA_of_NFA (M : NFA α) : DFA α :=
 { alphabet_fintype := M.alphabet_fintype,
-  state := set M.state,
-  state_fintype := set.fintype,
+  state := finset M.state,
   step := M.step_set,
   start := M.start,
-  accept_states := {Ss : set M.state | ∃ (S ∈ M.accept_states), S ∈ Ss} }
+  accept_states := finset.univ.filter (λ S, ∃ s ∈ S, s ∈ M.accept_states) }
 
 lemma DFA_of_NFA_correct (M : NFA α) (s : list α) :
-  M.accepts s ↔ M.DFA_of_NFA.accepts s := by refl
+  M.accepts s ↔ M.DFA_of_NFA.accepts s :=
+begin
+  rw [accepts, DFA.accepts, eval, DFA.eval],
+  change (∃ (S : M.state) (H : S ∈ M.accept_states), S ∈ list.foldl M.step_set M.start s) ↔ list.foldl M.step_set M.start s ∈ finset.univ.filter (λ S : finset M.state, ∃ s ∈ S, s ∈ M.accept_states),
+  rw finset.mem_filter,
+  finish
+end
 
 end NFA
 
@@ -114,23 +95,30 @@ structure ε_NFA (alphabet : Type u) :=
 [alphabet_fintype : fintype alphabet]
 (state : Type v)
 [state_fintype : fintype state]
-(step : state → option alphabet → set state)
-(start : set state)
-(accept_states : set state)
+[state_dec : decidable_eq state]
+(step : state → option alphabet → finset state)
+(start : finset state)
+(accept_states : finset state)
 
 namespace ε_NFA
+
+instance dec (M : ε_NFA α) := M.state_dec
 
 instance fin₁ (M : ε_NFA α) : fintype α := M.alphabet_fintype
 instance fin₂ (M : ε_NFA α) : fintype M.state := M.state_fintype
 
-inductive ε_closure (M : ε_NFA α) : set M.state → M.state → Prop
-| base : ∀ Ss (S ∈ Ss), ε_closure Ss S
-| step : ∀ Ss S T, ε_closure Ss S → T ∈ M.step S option.none → ε_closure Ss T
+inductive ε_closure_set (M : ε_NFA α) : finset M.state → M.state → Prop
+| base : ∀ Ss (S ∈ Ss), ε_closure_set Ss S
+| step : ∀ Ss S T, ε_closure_set Ss S → T ∈ M.step S option.none → ε_closure_set Ss T
 
-def step_set (M : ε_NFA α) : set M.state → α → set M.state :=
-λ Ss a, M.ε_closure $ Ss >>= λ S, M.step S (option.some a)
+def ε_closure (M : ε_NFA α) (S : finset M.state) : finset M.state :=
+  (λ T : finset M.state, S ∪ (T.bind (λ t, M.step t none)))^[fintype.card M.state] S
 
-def eval (M : ε_NFA α) : list α → set M.state := list.foldl M.step_set (M.ε_closure M.start)
+def step_set (M : ε_NFA α) : finset M.state → α → finset M.state :=
+λ Ss a, M.ε_closure $ finset.bind Ss (λ S, M.step S (option.some a))
+
+def eval (M : ε_NFA α) : list α → finset M.state := 
+  list.foldl M.step_set (M.ε_closure M.start)
 
 def accepts (M : ε_NFA α) (s : list α) : Prop :=
 ∃ S ∈ M.accept_states, S ∈ M.eval s
@@ -142,42 +130,10 @@ def NFA_of_ε_NFA (M : ε_NFA α) : NFA α :=
   start := M.ε_closure M.start,
   accept_states := M.accept_states }
 
-lemma NFA_of_ε_NFA_step_set_match (M : ε_NFA α) (Ss : set M.state) (a : α) :
+lemma NFA_of_ε_NFA_step_set_match (M : ε_NFA α) (Ss : finset M.state) (a : α) :
   M.step_set Ss a = M.NFA_of_ε_NFA.step_set Ss a :=
 begin
-  rw [step_set, NFA.step_set],
-  simp, 
-  change M.ε_closure (⋃ (i : M.state) (H : i ∈ Ss), M.step i (some a)) = ⋃ (i : M.NFA_of_ε_NFA.state) (H : i ∈ Ss), M.ε_closure (M.step i (some a)),
-  ext b,
-  split,
-  { intro h,   
-    generalize_hyp hT : (⋃ (i : M.state) (H : i ∈ Ss), M.step i (some a)) = Ts at h,
-    induction h with _ _ h Us U T hU h ih,
-    { rw ←hT at h,
-      simp only [exists_prop, set.mem_Union] at h ⊢,
-      cases h with i hi,
-      use i,
-      use hi.1,
-      apply ε_closure.base,
-      tauto },
-    { simp only [exists_prop, set.mem_Union] at *,
-      specialize ih hT,
-      cases ih with i ih,
-      existsi i,
-      existsi ih.1,
-      apply ε_closure.step,
-      use ih.2,
-      assumption } },
-  { rintro ⟨ _, ⟨ ⟨ S, rfl ⟩, hb ⟩ ⟩,
-    simp only [exists_prop, set.mem_Union] at hb,
-    cases hb with hS h,
-    generalize_hyp hT : M.step S (some a) = T at h,
-    induction h,
-    { apply ε_closure.base,
-      finish },
-    { specialize h_ih hT,
-      apply ε_closure.step,
-      assumption' } }
+  sorry
 end
 
 lemma NFA_of_ε_NFA_eval_match (M : ε_NFA α) (s : list α) :

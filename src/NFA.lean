@@ -107,12 +107,123 @@ instance dec (M : ε_NFA α) := M.state_dec
 instance fin₁ (M : ε_NFA α) : fintype α := M.alphabet_fintype
 instance fin₂ (M : ε_NFA α) : fintype M.state := M.state_fintype
 
-inductive ε_closure_set (M : ε_NFA α) : finset M.state → M.state → Prop
-| base : ∀ Ss (S ∈ Ss), ε_closure_set Ss S
-| step : ∀ Ss S T, ε_closure_set Ss S → T ∈ M.step S option.none → ε_closure_set Ss T
+def step_set' (M : ε_NFA α) : finset M.state → option α → finset M.state :=
+λ Ss a, finset.bind Ss (λ S, M.step S a)
 
-def ε_closure (M : ε_NFA α) (S : finset M.state) : finset M.state :=
-  (λ T : finset M.state, S ∪ (T.bind (λ t, M.step t none)))^[fintype.card M.state] S
+inductive ε_closure_set (M : ε_NFA α) (Ss : finset M.state) : M.state → Prop
+| base : ∀ (S ∈ Ss), ε_closure_set S
+| step : ∀ S T, ε_closure_set S → T ∈ M.step S option.none → ε_closure_set T
+
+def sub_of_compl {β : Type u} [fintype β] [decidable_eq β] : ∀ T U : finset β, Tᶜ ⊆ Uᶜ → U ⊆ T :=
+begin
+  intros T U h x hxU,
+  by_contra hTc,
+  rw ←finset.mem_compl at hTc,
+  have hUc := finset.mem_of_subset h hTc,
+  finish
+end
+
+instance ε_NFA_has_well_founded {β : Type u} [fintype β] [decidable_eq β] : has_well_founded (finset β) :=
+{ r := (λ S₁ S₂ : finset β, S₁ᶜ < S₂ᶜ), 
+  wf := 
+  inv_image.wf _ finset.lt_wf } 
+
+def ε_closure (M : ε_NFA α) : finset M.state → finset M.state
+| S :=
+begin
+  let S' := S ∪ M.step_set' S none,
+  by_cases heq : S' = S,
+  { exact S },
+  { let : S'ᶜ < Sᶜ,
+    { have hsub : S'ᶜ ⊆ Sᶜ,
+      { intros s hs,
+        rw finset.mem_compl at hs ⊢,
+        finish },
+      use hsub,
+      { intro hS,
+        apply heq, 
+        rw finset.subset.antisymm_iff,
+        split;
+        apply sub_of_compl;
+        assumption } }, 
+    exact ε_closure S' }
+end
+using_well_founded {dec_tac := tactic.assumption}
+
+lemma step_set'_wf (M : ε_NFA α) (S : finset M.state) (hneq : S ∪ M.step_set' S none ≠ S) :
+  (S ∪ M.step_set' S none)ᶜ < Sᶜ :=
+begin
+  have hsub : (S ∪ M.step_set' S none)ᶜ ⊆ Sᶜ,
+  { intros s hs,
+    rw finset.mem_compl at hs ⊢,
+    finish },
+  use hsub,
+  intro hS,
+  apply hneq, 
+  rw finset.subset.antisymm_iff,
+  split;
+  apply sub_of_compl,
+  assumption'
+end
+
+lemma ε_closure_equiv_ε_closure_set (M : ε_NFA α) :
+  Π (S : finset M.state) (s : M.state), s ∈ M.ε_closure S ↔ M.ε_closure_set S s
+| S :=
+begin
+  have IH := λ T (h : Tᶜ < Sᶜ), ε_closure_equiv_ε_closure_set T,
+  intro s,
+  split,
+  { intro h,
+    rw ε_closure at h,
+    dsimp at h,
+    split_ifs at h with heq,
+    { apply ε_closure_set.base,
+      assumption },
+    { have hwf : (S ∪ M.step_set' S none)ᶜ < Sᶜ := M.step_set'_wf S heq,
+      have h' : M.ε_closure_set (S ∪ M.step_set' S none) s,
+        rwa ← IH (S ∪ M.step_set' S none) hwf,
+      induction h' with t ht t' t d e ih,
+      { simp at ht,
+        cases ht,
+        { apply ε_closure_set.base,
+          assumption },
+        { rw step_set' at ht,
+          simp only [exists_prop, finset.mem_bind] at ht,
+          cases ht with t' ht,
+          apply ε_closure_set.step t' t,
+          { apply ε_closure_set.base,
+            tauto },
+          { tauto } } },
+      { apply ε_closure_set.step t' t,
+        { apply ih,
+          rwa IH (S ∪ M.step_set' S none) hwf },
+        assumption } } },
+  { intro h,
+    rw ε_closure,
+    dsimp,
+    split_ifs with heq;
+    induction h with t ht t' t ht' ht ih,
+    { assumption },
+    { rw ←heq,
+      simp only [finset.mem_union],
+      right,
+      rw step_set',
+      simp only [exists_prop, finset.mem_bind],
+      use t',
+      tauto },
+    all_goals
+    { have hwf : (S ∪ M.step_set' S none)ᶜ < Sᶜ := M.step_set'_wf S heq },
+    { rw IH (S ∪ M.step_set' S none) hwf,
+      apply ε_closure_set.base,
+      rw finset.mem_union,
+      left,
+      assumption },
+    { rw IH (S ∪ M.step_set' S none) hwf,
+      apply ε_closure_set.step t' t,
+      rwa ←IH (S ∪ M.step_set' S none) hwf,
+      assumption } }
+end
+using_well_founded {dec_tac := tactic.assumption}
 
 def step_set (M : ε_NFA α) : finset M.state → α → finset M.state :=
 λ Ss a, M.ε_closure $ finset.bind Ss (λ S, M.step S (option.some a))
@@ -122,6 +233,12 @@ def eval (M : ε_NFA α) : list α → finset M.state :=
 
 def accepts (M : ε_NFA α) (s : list α) : Prop :=
 ∃ S ∈ M.accept_states, S ∈ M.eval s
+
+instance accepts_dec (M : ε_NFA α) : decidable_pred M.accepts :=
+begin
+  intro s,
+  exact fintype.decidable_exists_fintype
+end
 
 def NFA_of_ε_NFA (M : ε_NFA α) : NFA α :=
 { alphabet_fintype := M.alphabet_fintype,
@@ -133,7 +250,45 @@ def NFA_of_ε_NFA (M : ε_NFA α) : NFA α :=
 lemma NFA_of_ε_NFA_step_set_match (M : ε_NFA α) (Ss : finset M.state) (a : α) :
   M.step_set Ss a = M.NFA_of_ε_NFA.step_set Ss a :=
 begin
-  sorry
+  rw [step_set, NFA.step_set],
+  simp,
+  ext b,
+  rw ε_closure_equiv_ε_closure_set,
+  split,
+  { intro h,
+    -- generalize_hyp hT : (Ss.bind (λ (S : M.state), M.step S (some a))) = Ts at h,
+    induction h with s h U T hU h ih,
+    { 
+      -- rw ←hT at h,
+      simp only [exists_prop, finset.mem_bind] at h ⊢,
+      cases h with i hi,
+      rw @finset.mem_bind _ M.state M.state_dec,
+      use i,
+      use hi.1,
+      change s ∈ M.ε_closure (M.step i (some a)),
+      rw ε_closure_equiv_ε_closure_set,
+      apply ε_closure_set.base,
+      tauto },
+    { rw @finset.mem_bind _ M.state M.state_dec at ⊢ ih,
+      rcases ih with ⟨ i, h₁, h₂ ⟩,
+      existsi i,
+      existsi h₁,
+      change T ∈ M.ε_closure (M.step i (some a)),
+      rw ε_closure_equiv_ε_closure_set,
+      apply ε_closure_set.step U _,
+      change U ∈ M.ε_closure (M.step _ (some _)) at h₂,
+      rw ←ε_closure_equiv_ε_closure_set,
+      assumption' } },
+  { rw @finset.mem_bind _ M.state M.state_dec,
+    rintro ⟨ s, hsSs, hba ⟩,
+    change b ∈ M.ε_closure (M.step _ (some _)) at hba,
+    rw ε_closure_equiv_ε_closure_set at hba,
+    induction hba with s h U T hU h ih,
+    { apply ε_closure_set.base,
+      finish },
+    { specialize ih,
+      apply ε_closure_set.step,
+      assumption' } }
 end
 
 lemma NFA_of_ε_NFA_eval_match (M : ε_NFA α) (s : list α) :
